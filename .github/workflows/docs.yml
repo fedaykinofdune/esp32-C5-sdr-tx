@@ -2,7 +2,8 @@
 #
 # Builds the documentation (doc/: Doxygen API reference and the Sphinx site)
 # as Zephyr's example application does, and publishes it to GitHub Pages from
-# pushes to main. Pull requests get it as an artifact.
+# pushes to main. Pull requests get it as an artifact. The browser playground
+# (web/) goes along under playground/, with the ESP32-C5 images it flashes.
 
 name: Documentation
 
@@ -12,9 +13,61 @@ permissions:
   contents: read
 
 jobs:
+  # The images the playground page flashes, staged with their manifest (web/tools/stage.py).
+  firmware:
+    name: Playground firmware
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: esp-sdr-zephyr
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12
+
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@be8136a8bba01580485d98b7ad2d32477c36a49a # v1.0.15
+        with:
+          app-path: esp-sdr-zephyr
+          toolchains: riscv64-zephyr-elf
+          ccache-cache-key: playground
+
+      - name: Fetch blobs
+        run: |
+          west blobs fetch hal_espressif
+          west blobs fetch esp-sdr-zephyr
+
+      - name: Build
+        run: |
+          xiao=xiao_esp32c5/esp32c5/hpcore
+          zero=waveshare_esp32c5_zero/esp32c5/hpcore
+          west build -d build/playground-xiao -b $xiao esp-sdr-zephyr/apps/playground
+          west build -d build/rfprobe-xiao -b $xiao esp-sdr-zephyr/apps/rfprobe
+          west build -d build/osmosdr_serial-xiao -b $xiao esp-sdr-zephyr/apps/osmosdr_serial
+          west build -d build/playground-zero -b $zero esp-sdr-zephyr/apps/playground
+
+      - name: Stage
+        run: |
+          esp-sdr-zephyr/web/tools/stage.py --out firmware \
+            "playground-xiao_esp32c5=build/playground-xiao:Transmit/receive playground for this page (recommended)" \
+            "rfprobe-xiao_esp32c5=build/rfprobe-xiao:Bench shell only (apps/rfprobe/tools/rfprobe.py)" \
+            "osmosdr_serial-xiao_esp32c5=build/osmosdr_serial-xiao:SoapySDR / GNU Radio streaming over USB, console on D6/D7" \
+            "playground-waveshare_esp32c5_zero=build/playground-zero:Playground for the Waveshare ESP32-C5-Zero"
+
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playground-firmware
+          path: firmware/
+
   build:
     name: Build
     runs-on: ubuntu-24.04
+    needs: firmware
     env:
       DOXYGEN_VERSION: 1.15.0
     steps:
@@ -42,6 +95,17 @@ jobs:
           doxygen
           SPHINXOPTS="-W" make html
 
+      - name: Download the playground firmware
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: playground-firmware
+          path: web/firmware
+
+      - name: Add the playground
+        run: |
+          cp -r web doc/_build_sphinx/html/playground
+          rm -rf doc/_build_sphinx/html/playground/tools
+
       - name: Setup pages
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
@@ -58,6 +122,14 @@ jobs:
         with:
           name: docs
           path: doc/_build_sphinx/html
+
+      # The page and its images on their own, to serve locally:
+      # python3 -m http.server -d playground 8000
+      - name: Upload the playground
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playground
+          path: doc/_build_sphinx/html/playground
 
   deploy:
     name: Deploy
