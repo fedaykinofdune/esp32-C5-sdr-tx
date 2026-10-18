@@ -1,0 +1,367 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP-SDR Playground</title>
+<meta name="description" content="Flash and drive an ESP32-C5 SDR over USB: transmit waveforms through the Wi-Fi DAC, capture and look at I/Q.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23101418'/%3E%3Cpath d='M3 16 Q7 4 11 16 T19 16 T27 16' stroke='%2333e1a0' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 16 Q7 4 11 16 T19 16 T27 16" /></svg>
+    <div>
+      <h1>ESP-SDR Playground</h1>
+      <p class="sub">ESP32-C5 Wi-Fi radio as a transmitter, over one USB cable</p>
+    </div>
+  </div>
+  <div class="devices" id="devices">
+    <div class="dev" data-slot="A">
+      <span class="slot">A</span><span class="dot"></span><span class="label">not connected</span>
+      <button class="btn small" data-act="connect">Connect</button>
+    </div>
+    <div class="dev" data-slot="B">
+      <span class="slot">B</span><span class="dot"></span><span class="label">not connected</span>
+      <button class="btn small" data-act="connect">Connect</button>
+    </div>
+    <button class="btn danger" id="killAll" title="Stop every transmission on every connected board">Stop all TX</button>
+  </div>
+</header>
+
+<div class="banner" id="safety">
+  <label class="check"><input type="checkbox" id="safeAck">
+    <span><b>Conducted setup only.</b> The boards are joined by coax through 30 to 60 dB of attenuation, no antennas. Transmit stays locked until this is ticked.</span>
+  </label>
+</div>
+
+<div class="nosupport" id="nosupport" hidden>
+  This browser has no Web Serial. Use Chrome, Edge or another Chromium browser on a desktop, over https or localhost.
+</div>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="flash">Flash</button>
+  <button role="tab" data-tab="tx" class="on">Transmit</button>
+  <button role="tab" data-tab="rx">Receive</button>
+  <button role="tab" data-tab="paint">Paint</button>
+  <button role="tab" data-tab="console">Console</button>
+  <button role="tab" data-tab="help">Help</button>
+</nav>
+
+<main>
+<!-- ============================== FLASH ============================== -->
+<section class="tab" id="tab-flash" hidden>
+  <div class="grid two">
+    <div class="card">
+      <h2>Firmware</h2>
+      <div id="builds" class="builds"><p class="muted">Looking for built images...</p></div>
+      <details class="custom">
+        <summary>Or flash a local file</summary>
+        <div class="row">
+          <label>Image <input type="file" id="fwFile" accept=".bin"></label>
+          <label>Address <input id="fwAddr" value="0x2000" size="8"></label>
+        </div>
+        <p class="muted small">A Zephyr <code>build/zephyr/zephyr.bin</code> for the C5 goes at 0x2000.</p>
+      </details>
+      <label class="check"><input type="checkbox" id="fwErase"> <span>Erase the whole flash first</span></label>
+      <div class="row">
+        <button class="btn primary" id="fwFlash">Flash</button>
+        <button class="btn" id="fwEraseOnly">Erase only</button>
+      </div>
+      <div class="progress"><div id="fwBar"></div></div>
+      <p class="muted small">Plug the XIAO in, press Flash, pick its port (USB JTAG/serial debug unit). No buttons to hold: the C5 drops into its bootloader over USB. Connected boards are released first.</p>
+    </div>
+    <div class="card">
+      <h2>Log</h2>
+      <pre class="log" id="fwLog"></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== TRANSMIT ============================== -->
+<section class="tab" id="tab-tx">
+  <div class="grid tx">
+    <div class="col">
+      <div class="card">
+        <h2>Radio <select class="devsel" id="txDev"></select></h2>
+        <div class="row">
+          <label>LO (MHz) <input type="number" id="txFreq" value="2412" min="100" max="6000" step="1"></label>
+          <button class="btn" id="txTune">Tune</button>
+          <span class="res" id="txTuneRes"></span>
+        </div>
+        <details>
+          <summary>Fine tuning and filters</summary>
+          <div class="row">
+            <label>PLL (MHz) <input type="number" id="txRawMhz" value="2412" step="1"></label>
+            <label>+ kHz <input type="number" id="txRawKhz" value="0" step="1"></label>
+            <button class="btn" id="txRaw">Program PLL</button>
+          </div>
+          <div class="row">
+            <label>Channel BW <select id="txCbw"><option value="0">20 MHz</option><option value="1">mode 1</option><option value="2">40 MHz (filters ±18 MHz)</option></select></label>
+            <button class="btn" id="txCbwSet">Apply</button>
+          </div>
+          <div class="row">
+            <label>TX LPF A <input type="number" id="txLpfA" value="-1" min="-1" step="1"></label>
+            <label>B <input type="number" id="txLpfB" value="-1" min="-1" step="1"></label>
+            <button class="btn" id="txLpfSet">Apply</button>
+          </div>
+          <p class="muted small">"Program PLL" bypasses the frequency plan and stops retuning around transmissions. -34 from Tune is -ERANGE: tuned, but the VCO left its window.</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>Engine</h2>
+        <div class="seg" id="txEngine">
+          <button data-v="r80">DAC 80 MS/s</button>
+          <button data-v="r40" class="on">DAC 40 MS/s</button>
+          <button data-v="paced">Paced</button>
+          <button data-v="carrier">Carrier</button>
+        </div>
+        <div class="eng" data-eng="replay">
+          <div class="row">
+            <label>Length (words) <input type="number" id="rpN" value="16000" min="16" max="16383"></label>
+            <label>Amplitude <input type="number" id="rpAmp" value="400" min="1" max="511"></label>
+            <label>DAC scale <input type="number" id="rpScale" value="2" min="1" max="255"></label>
+          </div>
+          <div class="row">
+            <label>Mode <select id="rpMode"><option value="loop">Continuous</option><option value="burst">Burst</option><option value="pulse">Pulsed</option></select></label>
+            <label class="m-burst m-pulse">Passes <input type="number" id="rpPasses" value="10" min="1" max="255"></label>
+            <label class="m-pulse">Off (ms) <input type="number" id="rpOff" value="100" min="0" max="60000"></label>
+          </div>
+          <p class="muted small" id="rpDrive"></p>
+        </div>
+        <div class="eng" data-eng="paced" hidden>
+          <div class="row">
+            <label>Rate <select id="pcRate"><option>250000</option><option selected>125000</option><option>100000</option><option>62500</option><option>50000</option><option>25000</option><option>10000</option></select></label>
+            <label>Interp <select id="pcInterp"><option>1</option><option>2</option><option selected>4</option><option>8</option></select></label>
+            <label>Duration (ms) <input type="number" id="pcMs" value="3000" min="1" max="60000"></label>
+          </div>
+          <div class="row">
+            <label>Length (samples) <input type="number" id="pcN" value="12500" min="16" max="16383"></label>
+            <label>Amplitude <input type="number" id="pcAmp" value="8000" min="1" max="32767"></label>
+          </div>
+          <p class="muted small">The CPU writes the TX DC register sample by sample with interrupts locked: 2400 to 5900 MHz, the board is busy (no shell) for the duration.</p>
+        </div>
+        <div class="eng" data-eng="carrier" hidden>
+          <div class="row">
+            <label>I <input type="number" id="crI" value="100" min="-511" max="511"></label>
+            <label>Q <input type="number" id="crQ" value="0" min="-511" max="511"></label>
+          </div>
+          <p class="muted small">A constant DAC value: an unmodulated carrier at the LO, no CPU, held until Stop. Receive still works on the same board.</p>
+        </div>
+      </div>
+
+      <div class="card" id="genCard">
+        <h2>Waveform</h2>
+        <div class="row">
+          <label>Generator <select id="genSel"></select></label>
+        </div>
+        <div class="row wrap" id="genParams"></div>
+        <div class="row" id="genFileRow" hidden>
+          <label>I/Q file <input type="file" id="genFile"></label>
+        </div>
+      </div>
+
+      <div class="card action">
+        <div class="row">
+          <button class="btn primary big" id="txGo" disabled>Transmit</button>
+          <button class="btn danger big" id="txStop">Stop</button>
+        </div>
+        <div class="progress"><div id="txBar"></div></div>
+        <p class="res" id="txRes">Tick the conducted-setup box to unlock transmit.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card plot">
+        <h3>Spectrum <span class="muted" id="pvInfo"></span></h3>
+        <canvas id="pvSpec" height="260"></canvas>
+      </div>
+      <div class="card plot">
+        <h3>I/Q (first samples)</h3>
+        <canvas id="pvTime" height="170"></canvas>
+      </div>
+      <div class="card plot" id="pvConstCard">
+        <h3>Constellation (symbols)</h3>
+        <canvas id="pvConst" height="220" class="square"></canvas>
+      </div>
+      <p class="muted small" id="pvNote"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== RECEIVE ============================== -->
+<section class="tab" id="tab-rx" hidden>
+  <div class="grid tx">
+    <div class="col">
+      <div class="card">
+        <h2>Receiver <select class="devsel" id="rxDev"></select></h2>
+        <div class="row">
+          <label>LO (MHz) <input type="number" id="rxFreq" value="2412" min="100" max="6000"></label>
+          <button class="btn" id="rxTune">Tune</button>
+          <span class="res" id="rxTuneRes"></span>
+        </div>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="rxAgc"> <span>AGC</span></label>
+          <label>Gain index <input type="range" id="rxGain" min="0" max="60" value="32"> <output id="rxGainV">32</output></label>
+        </div>
+        <div class="row">
+          <label>RX LPF <input type="number" id="rxLpf" value="0" min="-1" step="1"></label>
+          <button class="btn" id="rxApply">Apply gain + filter</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Source</h2>
+        <div class="seg" id="rxSrc">
+          <button data-v="burst" class="on">Burst capture</button>
+          <button data-v="diag">Gapless (diag bus)</button>
+        </div>
+        <div class="src" data-src="burst">
+          <div class="row">
+            <label>Rate <select id="rxRate"><option value="0">80 MS/s</option><option value="1" selected>40 MS/s</option><option value="2">20 MS/s</option><option value="3">10 MS/s</option><option value="4">8 MS/s</option><option value="5">4 MS/s</option></select></label>
+            <label>Samples <input type="number" id="rxN" value="8192" min="256" max="16380"></label>
+          </div>
+        </div>
+        <div class="src" data-src="diag" hidden>
+          <div class="row">
+            <label>Decimation R <input type="number" id="dgR" value="10" min="1" max="250"></label>
+            <label>Pairs <input type="number" id="dgPairs" value="2048" min="16" max="2048"></label>
+          </div>
+          <p class="muted small">4-bit I/Q at 40 MS/s through the modem diagnostic bus, box16 + CIC to 2.5 MS/s / R. Drives GPIO 0, 1, 3, 4, 5, 7, 10, 23 while it runs.</p>
+        </div>
+        <div class="row">
+          <label>Display <select id="rxAvg"><option value="0">Live</option><option value="4">Average 4</option><option value="16">Average 16</option><option value="peak">Peak hold</option></select></label>
+          <label>Ref (dBFS) <input type="number" id="rxRef" value="0" step="5"></label>
+          <label>Range (dB) <input type="number" id="rxRange" value="90" step="10"></label>
+        </div>
+      </div>
+      <div class="card action">
+        <div class="row">
+          <button class="btn primary big" id="rxOnce">Capture</button>
+          <button class="btn big" id="rxRun">Run</button>
+          <button class="btn big" id="rxSave">Save .cf32</button>
+        </div>
+        <p class="res" id="rxRes"></p>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card plot">
+        <h3>Spectrum <span class="muted" id="rxPeak"></span></h3>
+        <canvas id="rxSpec" height="260"></canvas>
+      </div>
+      <div class="card plot">
+        <h3>Waterfall</h3>
+        <canvas id="rxWf" height="200"></canvas>
+      </div>
+      <div class="grid two tight">
+        <div class="card plot"><h3>I/Q</h3><canvas id="rxTime" height="170"></canvas></div>
+        <div class="card plot"><h3>Constellation</h3><canvas id="rxConst" height="170" class="square"></canvas></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== PAINT ============================== -->
+<section class="tab" id="tab-paint" hidden>
+  <div class="grid tx">
+    <div class="col">
+      <div class="card">
+        <h2>Spectrum painting <select class="devsel" id="ptDev"></select></h2>
+        <p class="muted small">An image in a receiver's waterfall: each row is played as a set of tones, bottom row first, so a waterfall scrolling down shows it upright.</p>
+        <div class="row">
+          <label>Text <input id="ptText" value="HELLO SDR" size="14"></label>
+          <label>Image <input type="file" id="ptImg" accept="image/*"></label>
+        </div>
+        <div class="row">
+          <label>Width <input type="number" id="ptW" value="96" min="8" max="256"></label>
+          <label>Height <input type="number" id="ptH" value="20" min="4" max="128"></label>
+          <label class="check"><input type="checkbox" id="ptInv"> <span>Invert</span></label>
+          <button class="btn" id="ptRender">Render</button>
+        </div>
+        <div class="row">
+          <label>Row (ms) <input type="number" id="ptRow" value="60" min="1"></label>
+          <label>Amplitude <input type="number" id="ptAmp" value="400" min="1" max="511"></label>
+          <label>Rate <select id="ptRate"><option value="1" selected>40 MS/s</option><option value="0">80 MS/s</option></select></label>
+        </div>
+        <div class="row">
+          <label>Period n <input type="number" id="ptN" value="320" min="257" max="15000"></label>
+          <label>Scale <input type="number" id="ptScale" value="2" min="1" max="255"></label>
+          <label>Gap (ms) <input type="number" id="ptGap" value="500" min="0"></label>
+        </div>
+        <p class="muted small" id="ptInfo"></p>
+      </div>
+      <div class="card action">
+        <div class="row">
+          <button class="btn primary big" id="ptGo" disabled>Paint</button>
+          <button class="btn danger big" id="ptStop">Stop</button>
+          <button class="btn big" id="ptState">State</button>
+        </div>
+        <div class="progress"><div id="ptBar"></div></div>
+        <p class="res" id="ptRes"></p>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card plot">
+        <h3>Image (click to toggle pixels)</h3>
+        <canvas id="ptCanvas" height="260"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== CONSOLE ============================== -->
+<section class="tab" id="tab-console" hidden>
+  <div class="card">
+    <h2>Shell <select class="devsel" id="coDev"></select>
+      <span class="spacer"></span>
+      <button class="btn small" data-q="help">help</button>
+      <button class="btn small" data-q="wave info">wave info</button>
+      <button class="btn small" data-q="wave state">wave state</button>
+      <button class="btn small" data-q="probe tx paint state">paint state</button>
+      <button class="btn small" id="coReset">Reset board</button>
+      <button class="btn small" id="coClear">Clear</button>
+    </h2>
+    <pre class="log tall" id="coLog"></pre>
+    <form class="row" id="coForm">
+      <input id="coIn" class="grow mono" placeholder="probe f 2437, probe rx 1024 1, wave state ..." autocomplete="off">
+      <button class="btn primary">Send</button>
+    </form>
+  </div>
+</section>
+
+<!-- ============================== HELP ============================== -->
+<section class="tab" id="tab-help" hidden>
+  <div class="card prose">
+    <h2>How this fits together</h2>
+    <p>The firmware is the <code>playground</code> app (<code>apps/playground</code>): the <code>rfprobe</code> bench shell plus a waveform buffer. The page talks to its shell over the C5's built-in USB-Serial-JTAG with Web Serial; the same cable flashes it. Two boards can be connected at once (A and B), so one transmits while the other captures.</p>
+    <h3>Transmit engines</h3>
+    <ul>
+      <li><b>DAC 80 / 40 MS/s</b>: the modem's DAC engine loops up to 16383 words out of its SRAM bank with no CPU. Anything periodic: tones, combs, chirps, noise, PSK/QAM, FSK, OFDM, your own I/Q file. Continuous, a burst of N passes, or pulsed with the transmitter off between bursts.</li>
+      <li><b>Paced</b>: the CPU feeds the TX DC register at up to 250 kS/s (x1 to x8 interpolation), 2400 to 5900 MHz. Narrowband signals with fine frequency resolution.</li>
+      <li><b>Carrier</b>: a constant DAC value, a clean CW at the LO.</li>
+      <li><b>Paint</b>: pictures in a waterfall, a row of tones at a time.</li>
+    </ul>
+    <h3>Levels</h3>
+    <p>The C5's power steps have no effect: the level follows the samples times the DAC scale. The chain compresses above amplitude × scale of about 1000. Wide multicarrier signals compress earlier: back the amplitude off for OFDM and noise. The analog filters pass about ±10 MHz in the 20 MHz mode and ±18 MHz in the 40 MHz mode.</p>
+    <h3>Receive</h3>
+    <p>Burst captures run at 80 down to 4 MS/s, up to 16380 samples (10-bit I/Q). The gapless diagnostic-bus ring gives 4-bit I/Q at 40 MS/s decimated in the chip. A board cannot receive while its DAC engine plays; use a second board, or the carrier mode.</p>
+    <h3>Two-board check</h3>
+    <ol>
+      <li>Connect A and B, tune both to the same LO (Transmit tab for A, Receive tab for B).</li>
+      <li>A: CW tone at +1 MHz, DAC 40 MS/s, Transmit.</li>
+      <li>B: Burst capture at 40 MS/s, Run. The peak sits at +1 MHz plus the two crystals' offset.</li>
+    </ol>
+    <h3>Running it locally</h3>
+    <pre>west build -b xiao_esp32c5/esp32c5/hpcore esp-sdr-zephyr/apps/playground
+esp-sdr-zephyr/web/tools/stage.py playground=build
+python3 -m http.server -d esp-sdr-zephyr/web 8000   # then http://localhost:8000</pre>
+    <p>Web Serial needs a secure page: https, or http on localhost.</p>
+  </div>
+</section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+# Staged by web/tools/stage.py (CI does it for the published page).
+*.bin
+manifest.json

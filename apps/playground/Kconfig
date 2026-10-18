@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+mainmenu "ESP-SDR playground: rfprobe and a waveform buffer for the web UI"
+
+source "Kconfig.zephyr"

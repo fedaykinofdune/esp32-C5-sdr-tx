@@ -157,7 +157,7 @@ USB thread 1008 of 1280, drive thread 880 of 1152 while the PC copies 2 MB.
 
 ## Zephyr changes
 
-Eight commits on the fork's `esp-sdr-multiapp` branch, which `west.yml` pins, on top of the
+Eight commits on the fork's `esp-sdr` branch, which `west.yml` pins, on top of the
 SMP port: exec alias, llext repackage dependency, NCM/ECM unregister before init, Xtensa
 GLOB_DAT addend, alignment padding, PSRAM atomics (two commits), shared object region alignment.
 They are candidates for upstream Zephyr.

@@ -59,6 +59,7 @@ Contents
        - ``link``: QAM or OFDM packet link
        - ``wpan``: 802.15.4 test shell
        - ``rfprobe``: bench probe (tuning, tones, registers)
+       - ``playground``: rfprobe plus a waveform buffer, driven by the web UI (C5)
        - ``multiapp``: one firmware that runs the others
          (`doc/multiapp.md <doc/multiapp.md>`__)
        - ``micropython``: MicroPython REPL on USB, toward GNU Radio flowgraphs
@@ -68,6 +69,9 @@ Contents
        boards); see `doc/testing.md <doc/testing.md>`__
    * - ``doc/``
      - Guides, register pages, the Doxygen and Sphinx build
+   * - ``web/``
+     - The browser playground: flash a C5 and drive its transmitter and receiver over USB
+       (`apps/playground/README.rst <apps/playground/README.rst>`__)
    * - ``scripts/``
      - ``west dfu`` (``west_commands/``), test runners
    * - ``boards/``
@@ -97,6 +101,24 @@ shows the apps and ``multiapp run <name>`` starts one, for example
 Each app also builds on its own. Releases carry the multiapp image and
 the SoapySDR module for gqrx and GNU Radio.
 
+Browser playground (ESP32-C5)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Seeed XIAO ESP32-C5 (Zephyr's ``xiao_esp32c5`` board) or a Waveshare
+ESP32-C5-Zero, headless, on one USB cable. ``web/`` flashes it from the
+browser (esptool-js over Web Serial) and drives the ``playground`` app: build a
+waveform (tones, chirps, noise, PSK/QAM, FSK, OFDM, your own I/Q), loop it
+through the C5's DAC engine at 80 or 40 MS/s, pulse it, stream it through the
+paced path at 2.4 to 5.9 GHz, paint pictures into a waterfall, and capture and
+plot I/Q on a second board. CI publishes the page with the images under
+``playground/`` on the documentation site; locally:
+
+::
+
+   west build -d build -b xiao_esp32c5/esp32c5/hpcore esp-sdr-zephyr/apps/playground
+   esp-sdr-zephyr/web/tools/stage.py playground=build
+   python3 -m http.server -d esp-sdr-zephyr/web 8000   # Chrome: http://localhost:8000
+
 The library
 -----------
 
@@ -107,7 +129,8 @@ The library
   bus (``esp_sdr_diag.h``, ``CONFIG_ESP_SDR_DIAG``) and loops waveforms
   through its DAC engine at 80 or 40 MS/s (``esp_sdr_replay.h``,
   ``CONFIG_ESP_SDR_REPLAY``). ``capture``,
-  ``rfprobe``, ``wpan`` (C6) and ``osmosdr_serial`` run on them.
+  ``rfprobe``, ``wpan`` (C6), ``osmosdr_serial`` and ``playground`` (C5) run on them;
+  the C5 apps build for the XIAO ESP32-C5 as well.
 - **Tuning:** 100 to 6000 MHz in the API, but the PLL locks over a
   chip-specific range (about 1.8 to 2.8 GHz on the S3); below 2210 MHz
   through the 5/6 divider. ``-ERANGE`` when the VCO is out of range.
@@ -161,9 +184,9 @@ Dependencies
 
 ``west.yml`` pins:
 
-- `Zephyr esp-sdr-multiapp <https://github.com/cyber-murmel/zephyr/tree/esp-sdr-multiapp>`__:
+- `Zephyr esp-sdr <https://github.com/cyber-murmel/zephyr/tree/esp-sdr>`__:
   ESP32-S3 SMP (zephyrproject-rtos/zephyr#120082), CDC-NCM aggregation,
-  llext and Xtensa changes for multiapp
+  llext and Xtensa changes for multiapp, LVGL on the MicroPython heap
 - `hal_espressif esp-sdr <https://github.com/cyber-murmel/hal_espressif/tree/esp-sdr>`__:
   the HAL side of the SMP port
 - `libvrt esp-sdr <https://github.com/cyber-murmel/libvrt/tree/esp-sdr>`__:

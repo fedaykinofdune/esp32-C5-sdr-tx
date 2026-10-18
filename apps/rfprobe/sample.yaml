@@ -18,6 +18,11 @@ tests:
       - waveshare_esp32c5_zero/esp32c5/hpcore
     integration_platforms:
       - waveshare_esp32c5_zero/esp32c5/hpcore
+  sample.esp_sdr.rfprobe.xiao_c5:
+    platform_allow:
+      - xiao_esp32c5/esp32c5/hpcore
+    integration_platforms:
+      - xiao_esp32c5/esp32c5/hpcore
   sample.esp_sdr.rfprobe.s3:
     sysbuild: true
     platform_allow:

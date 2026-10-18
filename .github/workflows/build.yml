@@ -39,6 +39,10 @@ jobs:
             platforms: -p waveshare_esp32c5_zero/esp32c5/hpcore
             toolchains: riscv64-zephyr-elf
             twister-args: --build-only
+          - name: Build xiao_esp32c5
+            platforms: -p xiao_esp32c5/esp32c5/hpcore
+            toolchains: riscv64-zephyr-elf
+            twister-args: --build-only
           # Unit tests: built and run on the host. The SDK installs no
           # cross toolchain for them, only its host tools. gcovr (Zephyr's
           # requirements) reads the host gcc's coverage data; paths in the
