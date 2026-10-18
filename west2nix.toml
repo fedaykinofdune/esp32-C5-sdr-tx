@@ -4,12 +4,12 @@ group-filter = ["-babblesim", "-optional", "-testing"]
 [[manifest.projects]]
 name = "zephyr"
 url = "https://github.com/cyber-murmel/zephyr"
-revision = "ffb8a7cce5d31e098a09854d065e2e5ef7c493a4"
+revision = "b717e7df2a04cd4583131f8efd05c78897883ab1"
 path = "modules/zephyr"
 west-commands = "scripts/west-commands.yml"
 
 [manifest.projects.nix]
-hash = "sha256-hsljlgGSKRWV71oK48J0J9jjmQRxdI8pq0I5ZD7JJrQ="
+hash = "sha256-eLvYd3pzQFvbmFzENzEB+SmFGbPpoEVfOfCFGxSKqrk="
 
 [[manifest.projects]]
 name = "hal_espressif"

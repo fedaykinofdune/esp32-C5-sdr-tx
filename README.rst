@@ -184,9 +184,9 @@ Dependencies
 
 ``west.yml`` pins:
 
-- `Zephyr esp-sdr-multiapp <https://github.com/cyber-murmel/zephyr/tree/esp-sdr-multiapp>`__:
+- `Zephyr esp-sdr <https://github.com/cyber-murmel/zephyr/tree/esp-sdr>`__:
   ESP32-S3 SMP (zephyrproject-rtos/zephyr#120082), CDC-NCM aggregation,
-  llext and Xtensa changes for multiapp
+  llext and Xtensa changes for multiapp, LVGL on the MicroPython heap
 - `hal_espressif esp-sdr <https://github.com/cyber-murmel/hal_espressif/tree/esp-sdr>`__:
   the HAL side of the SMP port
 - `libvrt esp-sdr <https://github.com/cyber-murmel/libvrt/tree/esp-sdr>`__:
