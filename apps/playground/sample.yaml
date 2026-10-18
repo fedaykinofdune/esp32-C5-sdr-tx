@@ -1,0 +1,15 @@
+sample:
+  name: ESP-SDR playground
+  description: >-
+    rfprobe's shell plus a waveform buffer that loops arbitrary I/Q through the
+    C5's DAC engine or the paced TX DC path, driven by the web UI in web/
+common:
+  tags: esp-sdr
+  build_only: true
+  platform_allow:
+    - xiao_esp32c5/esp32c5/hpcore
+    - waveshare_esp32c5_zero/esp32c5/hpcore
+  integration_platforms:
+    - xiao_esp32c5/esp32c5/hpcore
+tests:
+  sample.esp_sdr.playground: {}
